@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from sympy import *
+#from sympy import *
 from scipy.optimize import minimize
 import csv
 
@@ -11,6 +11,8 @@ import glob, os
 E = 2e11  # Young's modulous
 dict_node = {}
 dict_element = {}
+list_load_full = np.array([0, 0, 20000, 0, 0, -25000, 0, 0])
+fixed_global_dof = [1, 2, 4, 7, 8]
 
 class element:
     def __init__(self, from_node, to_node):
@@ -69,10 +71,29 @@ def read_csvs():
             dict_element[count] = element(from_node, to_node) # The key is int
             count += 1
 
-    # for key in dict_element:
-        # dict_element[key].print_element()
+    # read load.csv
+    """
+    with open('/Users/mikemac/Documents/vs_code/solab_HW_10_bar_truss/load_fake.csv', newline='') as csvfile:
+        rows_load = csv.reader(csvfile, delimiter=',')
+        for i in range(len(dict_node)):
+            i += 1
+            findit = False
 
-def stiffness_matrix(i):
+            for row in rows_load:
+                load_node, x_load, y_load = row
+                print(i)
+
+                if load_node == str(i):
+                    list_load.extend([x_load, y_load])
+                    findit = True
+                    break
+                    
+            if findit == False:
+                    list_load.extend([0, 0])
+    """
+            
+
+def stiffness_matrix(i):  # i th element
     labels = dict_element[i].global_dof_list()
     indexes = dict_element[i].global_dof_list()
     c = dict_element[i].cos
@@ -85,21 +106,38 @@ def stiffness_matrix(i):
 def main():
     read_csvs()
 
-    num = len(dict_element)  # numbers of elements
-    K_matrix = np.zeros((num*2, num*2))
-    # K_matrix = pd.DataFrame(arr, index = list(range(1,num+1)), columns = list(range(1,num+1)))    
+    num = len(dict_node)  # numbers of elements
+    #K_matrix = np.zeros((num*2, num*2))
+    K_matrix = pd.DataFrame(np.zeros((num*2, num*2)), index = list(range(1,num*2+1)), columns = list(range(1,num*2+1)))    
     
-    for i in range(num):  # i th element
+    for i in range(len(dict_element)):  # i th element
         i += 1
-        for label in stiffness_matrix(i).columns:
-            for index in stiffness_matrix(i).index:
-                K_matrix[index-1, label-1] += stiffness_matrix(i).loc[index, label]/dict_element[i].length
+        for label in stiffness_matrix(i).columns:  # label is int
+            for index in stiffness_matrix(i).index:  #index is int 
+                K_matrix.iloc[index-1, label-1] += stiffness_matrix(i).loc[index, label]/dict_element[i].length
 
-    
+    # drop fixed global dof
+    K_matrix = K_matrix.drop(fixed_global_dof, axis=0)
+    K_matrix = K_matrix.drop(fixed_global_dof, axis=1)
+
+    fixed_global_dof_minus1 = [x-1 for x in fixed_global_dof]
+    list_load = np.delete(list_load_full, fixed_global_dof_minus1)
+
+    # --- test only --- #
+    K_matrix *= 295e8
+    print(K_matrix)
+
+    # Q = inv(K) * Fn
+    Q = np.matmul(np.linalg.inv(K_matrix),list_load)
+    print(Q)
+
+    # max displacement
+    max_displace = np.abs(np.amax(Q))
+    print(max_displace)
+
 
 
 if __name__ == '__main__':
     main()
-
 
 
