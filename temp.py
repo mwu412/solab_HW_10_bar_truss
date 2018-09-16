@@ -9,10 +9,13 @@ from IPython.display import display
 import glob, os
 
 E = 2e11  # Young's modulous
+Yield_Stress = 250e6  # unit: Pa
+Compression = True
 dict_node = {}
 dict_element = {}
 list_load_full = np.array([0, 0, 20000, 0, 0, -25000, 0, 0])
 fixed_global_dof = [1, 2, 4, 7, 8]
+element_stress = []
 
 class element:
     def __init__(self, from_node, to_node):
@@ -124,20 +127,53 @@ def main():
     list_load = np.delete(list_load_full, fixed_global_dof_minus1)
 
     # --- test only --- #
-    K_matrix *= 295e8
+    K_matrix *= 295e5
     print(K_matrix)
 
     # Q = inv(K) * Fn
-    Q = np.matmul(np.linalg.inv(K_matrix),list_load)
-    print(Q)
+    Q_arr = np.matmul(np.linalg.inv(K_matrix),list_load)
+    print(Q_arr)
 
     # max displacement
-    max_displace = np.abs(np.amax(Q))
+    max_displace = np.amax(np.abs(Q_arr))
     print(max_displace)
 
+    # max stress
+    Q_df = pd.DataFrame(Q_arr, index = K_matrix.index)
+    print(Q_df)
+    
+    for i in range(len(dict_element)):
+        i += 1
+        c = dict_element[i].cos
+        s = dict_element[i].sin
+        dof_list = dict_element[i].global_dof_list()
+        list_q = []
+        for dof in dof_list:
+            if dof in Q_df.index:
+                list_q.extend(Q_df.loc[dof,:])
+            else: list_q.extend([0])
+        #print('q: ', list_q)
+
+        dot = np.dot(np.array([-c, -s, c, s]), np.array(list_q))
+        element_stress.append(295e5/dict_element[i].length*dot)
+        #-- element_stress.append(E/dict_element[i].length*dot)
+
+        #print('stress: ', element_stress)
+
+    max_stress = np.amax(np.abs(np.array(element_stress)))
+    if max_stress in element_stress:
+        Compression = False
+    print(max_stress)
+
+    # check buckling
+    if Compression:
+        
 
 
 if __name__ == '__main__':
     main()
+
+
+
 
 
