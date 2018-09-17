@@ -185,12 +185,12 @@ def main():
 
     def tuple_symbols():
         object_f = 0
-        tuple_sym = ()
+        list_sym = [] 
         for n, element in dict_element.items():  
             r_th = sy.symbols('r' + str(element.radius))
             object_f += r_th**2
-            tuple_sym += r_th
-        
+            list_sym.append(r_th)
+        tuple_sym = tuple(list_sym)
         return object_f, tuple_sym
 
     object_f, syms = tuple_symbols()
@@ -202,6 +202,7 @@ def main():
     def f(x):         
         return object_f_n(lambda: x[n-1] for n in dict_element)
 
+    
 
 if __name__ == '__main__':
     main()
