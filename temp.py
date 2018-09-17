@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-#from sympy import *
+import sympy as sy
 from scipy.optimize import minimize
 import csv
 
@@ -10,7 +10,6 @@ import glob, os
 
 E = 2e11  # Young's modulous
 Yield_Stress = 250e6  # unit: Pa
-Compression = True
 dict_node = {}
 dict_element = {}
 list_load_full = np.array([0, 0, 20000, 0, 0, -25000, 0, 0])
@@ -18,11 +17,12 @@ fixed_global_dof = [1, 2, 4, 7, 8]
 element_stress = []
 
 class element:
-    def __init__(self, from_node, to_node):
+    def __init__(self, from_node, to_node, radius):
         from_node = int(from_node)
         to_node = int(to_node)
         self.from_node = from_node
         self.to_node = to_node
+        self.radius = radius
 
         x_from = dict_node[from_node].x
         y_from = dict_node[from_node].y
@@ -45,7 +45,7 @@ class node:
 
 def read_csvs():
     # read node.csv
-    with open('/Users/mikemac/Documents/vs_code/solab_HW_10_bar_truss/node_fake.csv', newline='') as csvfile:
+    with open('/home/mike/Documents/vs_code/solab_HW_10_bar_truss/node_fake.csv', newline='') as csvfile:
         rows_node = csv.reader(csvfile, delimiter=',')
 
         count = 0
@@ -62,16 +62,16 @@ def read_csvs():
             count += 1
 
     # read element.csv
-    with open('/Users/mikemac/Documents/vs_code/solab_HW_10_bar_truss/element_fake.csv', newline='') as csvfile:
+    with open('/home/mike/Documents/vs_code/solab_HW_10_bar_truss/element_fake.csv', newline='') as csvfile:
         rows_element = csv.reader(csvfile, delimiter=',')
 
         count = 0
         for row in rows_element:
-            number, from_node, to_node = row
+            number, from_node, to_node, radius = row
             if number == 'element':
                 count += 1
                 continue
-            dict_element[count] = element(from_node, to_node) # The key is int
+            dict_element[count] = element(from_node, to_node, radius) # The key is int
             count += 1
 
     # read load.csv
@@ -107,17 +107,23 @@ def stiffness_matrix(i):  # i th element
     return pd.DataFrame(arr, index = indexes, columns = labels)
 
 def main():
+    Compression = True
+    critical_stress = 0
+    critical_radius = 0
+
+
+
     read_csvs()
 
     num = len(dict_node)  # numbers of elements
     #K_matrix = np.zeros((num*2, num*2))
     K_matrix = pd.DataFrame(np.zeros((num*2, num*2)), index = list(range(1,num*2+1)), columns = list(range(1,num*2+1)))    
     
-    for i in range(len(dict_element)):  # i th element
-        i += 1
-        for label in stiffness_matrix(i).columns:  # label is int
-            for index in stiffness_matrix(i).index:  #index is int 
-                K_matrix.iloc[index-1, label-1] += stiffness_matrix(i).loc[index, label]/dict_element[i].length
+    for number, element in dict_element.items():  # i th element
+        for label in stiffness_matrix(number).columns:  # label is int
+            for index in stiffness_matrix(number).index:  #index is int 
+                K_matrix.iloc[index-1, label-1] += stiffness_matrix(number).loc[index, label]/element.length
+
 
     # drop fixed global dof
     K_matrix = K_matrix.drop(fixed_global_dof, axis=0)
@@ -142,11 +148,10 @@ def main():
     Q_df = pd.DataFrame(Q_arr, index = K_matrix.index)
     print(Q_df)
     
-    for i in range(len(dict_element)):
-        i += 1
-        c = dict_element[i].cos
-        s = dict_element[i].sin
-        dof_list = dict_element[i].global_dof_list()
+    for n, element in dict_element.items():
+        c = element.cos
+        s = element.sin
+        dof_list = element.global_dof_list()
         list_q = []
         for dof in dof_list:
             if dof in Q_df.index:
@@ -155,19 +160,47 @@ def main():
         #print('q: ', list_q)
 
         dot = np.dot(np.array([-c, -s, c, s]), np.array(list_q))
-        element_stress.append(295e5/dict_element[i].length*dot)
-        #-- element_stress.append(E/dict_element[i].length*dot)
+        element_stress.append(295e5/element.length*dot)
+        #-- element_stress.append(E/element.length*dot)
 
         #print('stress: ', element_stress)
 
     max_stress = np.amax(np.abs(np.array(element_stress)))
-    if max_stress in element_stress:
-        Compression = False
     print(max_stress)
 
+    if max_stress in element_stress:
+        # Compression = False
+        critical_radius = dict_element[element_stress.index(max_stress)+1].radius
+    
+
     # check buckling
-    if Compression:
+    else:  # Compression = True
+        max_stress_minus = -max_stress
+        critical_radius = dict_element[element_stress.index(max_stress_minus)+1].radius
+        #critical_stress = np.pi**3*E*critical_radius**4/4/dict_element[element_stress.index(max_stress_minus)+1].length
+
+    print(critical_radius)
+
+    # create object function
+
+    def tuple_symbols():
+        object_f = 0
+        tuple_sym = ()
+        for n, element in dict_element.items():  
+            r_th = sy.symbols('r' + str(element.radius))
+            object_f += r_th**2
+            tuple_sym += r_th
         
+        return object_f, tuple_sym
+
+    object_f, syms = tuple_symbols()
+
+    ###############################
+    object_f_n = sy.lambdify(syms, object_f, modules='numpy')  # create for numerical 
+
+    # scipy_optimization_minimize
+    def f(x):         
+        return object_f_n(lambda: x[n-1] for n in dict_element)
 
 
 if __name__ == '__main__':
